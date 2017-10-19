@@ -94,11 +94,15 @@ uint16_t blue_light = 0;
 Weather ht_sensor;
 
 DEFINE_GRADIENT_PALETTE( infrared_gp ) {
-  0,   255,  0, 255,  //purple
-  80,     0,  0, 255,  //blue
-  120,     0, 255,  0,  //green
-  150,   255,  05,  0,  //red
-  255,   255, 255, 255
+  0,   255,  0,  255,  // -28 purple
+  56,    0,  0,  255,  //   0 blue
+  100,   0, 255,   0,  //  22 green
+  101, 255,   0,   0,  //  37 red
+  108, 255, 255,   0,  //  30 yellow
+  112, 255, 128,   0,  //  30 yellow
+  116, 255,   0,   0,  //  37 red
+  156,   0, 255, 255,  //  50 cyan
+  255, 255, 255, 255
 }; //full white
 
 
@@ -118,7 +122,7 @@ void WifiSetup() {
   FillLEDsFromStaticColor(0,0,250);   
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   // TODO: quit connecting after e.g. 20 seconds
-  delay ( 2500 );
+  delay ( 500 );
   while (WiFi.status() != WL_CONNECTED) {
     // TODO: blink leds here
     delay ( 250 );
@@ -217,6 +221,7 @@ void setup() {
   //currentPalette = RainbowColors_p;
   currentPalette = infrared_gp;
   currentBlending = LINEARBLEND;
+  //currentBlending = NOBLEND;
 
   // Check which sensor is connected
   Serial.println("Setup: Polling IR thermometer");
@@ -460,7 +465,9 @@ void ShowCurrentEffect() {
     val2 = 0;
     type3 = "_";
     val3 = 0;
-    float colorIndex = map(val * 100, 10 * 100, 40 * 100, 0, 255);
+    float colorIndex = map(val * 100, -28 * 100, 100 * 100, 0, 255);
+    if (colorIndex < 0) {colorIndex = 0;}
+    if (colorIndex > 255) {colorIndex = 255;}
     Serial.print(val);
     Serial.print("\t");
     Serial.println(colorIndex);
@@ -482,7 +489,7 @@ void ShowCurrentEffect() {
     type3 = "_";
     val3 = 0;
 
-    float colorIndex = map(val * 100, 40 * 100, 100 * 100, 0, 255);
+    float colorIndex = map(val * 100, 10 * 100, 100 * 100, 0, 255);
     Serial.print(val);
     Serial.print(" %, Humi map ");
     Serial.println(colorIndex);
@@ -545,6 +552,21 @@ void ShowCurrentEffect() {
       val = red_light;
       val2 = green_light;
       val3 = blue_light;
+      /*
+      uint16_t maxval = max(val, val2);
+      maxval = max(maxval, val3);
+      float divider = maxval / 255.0;
+      uint8_t _r = r / divider;
+      uint8_t _g = g / divider;
+      uint8_t _b = b / divider;
+      Serial.println(_r);
+      Serial.println(_g);
+      Serial.println(_r);
+      */
+      if (red_light > 255) {red_light = 255;}
+      if (green_light > 255) {green_light = 255;}
+      if (blue_light > 255) {blue_light = 255;}
+      FillLEDsFromStaticColor(red_light, green_light, blue_light); 
     }
     
   }
