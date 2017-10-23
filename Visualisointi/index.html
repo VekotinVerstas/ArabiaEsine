@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Tulevaisuuden Esine – datan visualisointi</title>
+<meta charset="UTF-8">
+<script type="text/javascript" src="config.js"></script>
+<script type="text/javascript" src="plotly-latest.min.js"></script>
+<script type="text/javascript" src="mqttws31.min.js"></script>
+
+<style type="text/css">
+#graph {
+    width: 100%;
+    height: 800px;
+}
+
+img.logo {
+    margin: 5px;
+}
+
+#introtext {
+    font-size: 120%;
+    float: left;
+    margin: 30px 20px 0 0;
+    font-family: Verdana;
+
+}
+
+#logobar {
+    top: 0;
+    right: 0;
+    position: fixed;
+    z-index: 10000000;
+    text-align: right;
+    background-color: #fff;
+}
+</style>
+
+</head>
+
+<body>
+<div id="logobar">
+<div id="introtext">Tulevaisuuden esineen sensoreiden datavisualisointi</div>
+<img src="images/tulev.esine.logo-small.png"  srcset="images/tulev.esine.logo-small-2x.png 2x" alt="Tulevaisuuden esine" class="logo">
+<img src="images/Vekotinverstas-logo-2017-small.png"  srcset="images/Vekotinverstas-logo-2017-small-2x.png 2x" alt="Vekotinverstas" class="logo">
+<img src="images/FVH_logo_PMS021_thumb-small.png"  srcset="images/FVH_logo_PMS021_thumb-small-2x.png 2x" alt="Forum Virium Helsinki" class="logo">
+<img src="images/Arabia_artdept_logo-small.png" srcset="images/Arabia_artdept_logo-small-2x.png 2x" alt="Arabia Art Department" class="logo">
+
+</div>
+<div id="graph"></div>
+
+<script type="text/javascript">
+
+var trace1 = {
+  x: [],
+  y: [],
+  mode: 'lines',
+  name: 'IR Lämpötila °C',
+  type: 'scatter'
+};
+
+var trace2 = {
+  x: [],
+  y: [],
+  mode: 'lines',
+  xaxis: 'x2',
+  yaxis: 'y2',
+  name: 'Valoisuus lx',
+  type: 'scatter'
+};
+
+var trace3 = {
+  x: [],
+  y: [],
+  mode: 'lines',
+  xaxis: 'x3',
+  yaxis: 'y3',
+  name: 'Ilmankosteus %',
+  type: 'scatter'
+};
+
+var trace3b = {
+  x: [],
+  y: [],
+  mode: 'lines',
+  xaxis: 'x3',
+  yaxis: 'y3',
+  name: 'Ilman lämpötila °C',
+  type: 'scatter'
+};
+
+var trace4 = {
+  x: [],
+  y: [],
+  mode: 'lines',
+  xaxis: 'x4',
+  yaxis: 'y4',
+  name: 'Väri R',
+  type: 'scatter',
+  line: {
+    width: 1,
+    color: '#f00'
+  }
+};
+
+var trace4b = {
+  x: [],
+  y: [],
+  mode: 'lines',
+  xaxis: 'x4',
+  yaxis: 'y4',
+  name: 'Väri G',
+  type: 'scatter',
+  line: {
+    width: 1,
+    color: '#0f0'
+  }
+
+};
+
+var trace4c = {
+  x: [],
+  y: [],
+  mode: 'lines',
+  xaxis: 'x4',
+  yaxis: 'y4',
+  name: 'Väri B',
+  type: 'scatter',
+  line: {
+    width: 1,
+    color: '#00f'
+  }
+
+};
+
+var data = [trace1, trace2, trace3, trace3b, trace4, trace4b, trace4c];
+
+var layout = {
+    xaxis: {
+        domain: [0, 0.45],
+        type: 'date'
+    },
+    yaxis: {
+        title: "IR lämpötila",
+        domain: [0, 0.45]
+    },
+    xaxis2: {
+        domain: [0.55, 1],
+        type: 'date'
+    },
+    yaxis2: {
+        title: "Valoisuus",
+        type: 'log',
+        autorange: true,
+        domain: [0, 0.45],
+        range: [0, 100],
+        anchor: 'x2'
+    },
+    xaxis3: {
+        domain: [0, 0.45],
+        type: 'date',
+        anchor: 'y3'
+    },
+    yaxis3: {
+        title: "Kosteus ja lämpö",
+        domain: [0.55, 1],
+        range: [0, 100]
+    },
+    xaxis4: {
+        domain: [0.55, 1],
+        type: 'date',
+        anchor: 'y4'
+    },
+    yaxis4: {
+        title: "Valon väri",
+        type: 'log',
+        autorange: true,
+        domain: [0.55, 1],
+        range: [0, 100],
+        anchor: 'x4'
+    }
+};
+
+var options= {
+    showLink: false, // removes the link to edit on plotly - works
+    modeBarButtonsToRemove: ['toImage', 'zoom2d', 'pan', 'pan2d', 'autoScale2d'],
+    //modeBarButtonsToAdd: ['lasso2d'],
+    displayLogo: false, // this one also seems to not work
+    displayModeBar: true //this one does work
+};
+
+
+Plotly.plot('graph', data, layout, options);
+
+// Create a client instance
+client = new Paho.MQTT.Client(clientData.ws.hostname, Number(clientData.ws.port), "clientId-"+Math.random());
+
+
+// set callback handlers
+client.onConnectionLost = onConnectionLost;
+client.onMessageArrived = onMessageArrived;
+client.onerror = function(event){
+    console.log("Error " + event);
+}
+
+MqttConnect();
+var DATA_MAX_AGE = 60 * 1000; /* ms */
+var last_data = new Date;
+console.log(last_data);
+
+
+// Check every now if we get data from websocket
+setInterval(function(){
+    var age = (new Date) - last_data;
+    console.log("Latest data is " + age + " ms old");
+    if (age > DATA_MAX_AGE) {
+       location.reload();
+    }
+}, 10000);
+
+function MqttConnect() {
+    // connect the client
+    var ret = false;
+	try {
+        client.connect({
+            onSuccess: onConnect,
+            userName : clientData.ws.username,
+            password : clientData.ws.password
+        });
+        ret = true;
+	} catch (e) {
+		console.log(e);
+	}
+	return ret;
+}
+
+var reconnectInterval = 5;
+
+function MqttReconnect() {
+    setTimeout(function(){
+		console.log("WebSocketClient: reconnecting...");
+		var ret = MqttConnect();
+		if (ret) {
+		    return;
+        } else {
+		  reconnectInterval = reconnectInterval * 2;
+		  if (reconnectInterval > 60) {reconnectInterval = 60};
+        }
+
+	}, reconnectInterval*1000);
+
+
+}
+
+// called when the client connects
+function onConnect() {
+  // Once a connection has been made, make a subscription and send a message.
+  console.log("onConnect");
+  client.subscribe(clientData.ws.topic);
+  message = new Paho.MQTT.Message("Hello");
+  message.destinationName = "World";
+  //client.send(message);
+}
+
+// called when the client loses its connection
+function onConnectionLost(responseObject) {
+  if (responseObject.errorCode !== 0) {
+    console.log("onConnectionLost:"+responseObject.errorMessage);
+    console.log("Trying to reconnect...");
+    MqttReconnect();
+  }
+  //client.connect({onSuccess:onConnect});
+}
+
+// called when a message arrives
+function onMessageArrived(message) {
+  last_data = new Date;
+  console.log("onMessageArrived:"+message.payloadString);
+  var sdata = JSON.parse(message.payloadString);
+  // console.log(data);
+  // Remove oldest points, keep 500 latest
+  for (i = 0; i < data.length; i++) {
+      if (data[i].y.length > 500) {
+          data[i].y.shift();
+          data[i].x.shift();
+      }
+  }
+  var time = new Date();
+  var olderTime = time.setMinutes(time.getMinutes() - 3);
+  var futureTime = time.setMinutes(time.getMinutes() + 3);
+  var minuteView = layout;
+  minuteView.xaxis.range = [olderTime,futureTime];
+  minuteView.xaxis2.range = [olderTime,futureTime];
+  minuteView.xaxis3.range = [olderTime,futureTime];
+  minuteView.xaxis4.range = [olderTime,futureTime];
+
+  Plotly.relayout('graph', minuteView);
+  if (sdata.sensor == 'humitemp') {
+    var update = {
+      x: [[time], [time]],
+      y: [[sdata.data[1]], [sdata.data[3]]]
+    };
+    Plotly.extendTraces('graph', update, [2,3]);
+  }
+  if (sdata.sensor == 'irtemp') {
+    var update = {
+      x: [[time]],
+      y: [[sdata.data[1]]]
+    };
+    Plotly.extendTraces('graph', update, [0]);
+  }
+  if (sdata.sensor == 'lux') {
+    var update = {
+      x: [[time]],
+      y: [[sdata.data[1]]]
+    };
+    Plotly.extendTraces('graph', update, [1]);
+  }
+  if (sdata.sensor == 'rgbgest') {
+    var update = {
+      x: [[time], [time], [time]],
+      y: [[sdata.data[1]], [sdata.data[3]], [sdata.data[5]]]
+    };
+    Plotly.extendTraces('graph', update, [4,5,6]);
+  }
+
+}
+      
+    </script>
+
+  </body>
+</html>
