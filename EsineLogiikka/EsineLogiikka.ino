@@ -39,7 +39,7 @@ uint32_t lastMsgTime = 0;
 // FastLED settings
 #define LED_PIN     D7  // 13    // D7
 #define CLK_PIN     D5  // 14    // D5
-#define NUM_LEDS    30
+#define NUM_LEDS    60
 #define BRIGHTNESS  255
 //#define LED_TYPE    WS2811
 #define LED_TYPE    LPD8806
@@ -96,14 +96,31 @@ Weather ht_sensor;
 DEFINE_GRADIENT_PALETTE( infrared_gp ) {
   0,   255,  0,  255,  // -28 purple
   56,    0,  0,  255,  //   0 blue
-  100,   0, 255,   0,  //  22 green
-  101, 255,   0,   0,  //  37 red
+  80,   0, 255,   0,  //  22 green
+  //101, 255,   0,   0,  //  37 red
   108, 255, 255,   0,  //  30 yellow
-  112, 255, 128,   0,  //  30 yellow
-  116, 255,   0,   0,  //  37 red
+  //112, 255, 128,   0,  //  30 yellow
+  112, 255,   0,   0,  //  37 red
   156,   0, 255, 255,  //  50 cyan
-  255, 255, 255, 255
-}; //full white
+  255, 255, 255, 255   //full white
+}; 
+
+DEFINE_GRADIENT_PALETTE( lux_gp ) {
+    0,   0,  0,  255,  //   0 blue
+  100,   0, 255,   0,  //  22 green
+  120, 255, 128,   0,  //  30 yellow
+  140, 255,   0,   0,  //  37 red
+  255, 255, 255, 255   //  full white
+}; 
+
+DEFINE_GRADIENT_PALETTE( humi_gp ) {
+    0,    0,  0,  255, //   0 blue
+   20, 255, 255,   0,  //  20 yellow
+   89,   0, 255,   0,  //  30 green
+  127,   0, 255,   0,  //  30 green
+  255, 255,   0,   0   // 100 red
+}; 
+
 
 
 String macToStr(const uint8_t* mac)
@@ -130,7 +147,7 @@ void WifiSetup() {
     Serial.print ( "." );
     delay ( 250 );
     FillLEDsFromStaticColor(0,0,0); 
-    if ((millis() - wifi_start) > 10*1000) {
+    if ((millis() - wifi_start) > 20*1000) {
       Serial.println("");
       Serial.println("WiFi connect failed");
       // TODO: show error message in leds
@@ -219,6 +236,7 @@ void setup() {
   Serial.println("Setup: Polling IR thermometer");
   if (readObjectTempC(0x5A) < 500) {
     currentMode = S_IR_TEMP;
+    currentPalette = infrared_gp;
     Serial.print("Setup: Found IR thermometer: ");
     Serial.println(readObjectTempC(0x5A));
   }
@@ -228,6 +246,7 @@ void setup() {
   uint16_t lux = lightMeter.readLightLevel();
   if (lux >= 0 && lux < 54612) {
     currentMode = S_LUX_METER;
+    currentPalette = lux_gp;
     Serial.print("Setup: Found LUX meter: ");
     Serial.println(lux);
   }
@@ -238,6 +257,7 @@ void setup() {
   Serial.println(humidity);
   if (humidity > 0.0 && humidity <= 150.0) {
     currentMode = S_TEMP_HUMIDITY;
+    currentPalette = humi_gp;
     Serial.print("Setup: Found HUMI meter: ");
     Serial.println(humidity);
   }
@@ -365,15 +385,12 @@ void ShowCurrentEffect() {
     type3 = "_";
     val3 = 0;
 
-    float colorIndex = map(val * 100, 10 * 100, 100 * 100, 0, 255);
+    float colorIndex = map(val * 100, 0 * 100, 100 * 100, 0, 255);
     Serial.print(val);
     Serial.print(" %, Humi map ");
     Serial.println(colorIndex);
-    CRGB green  = CHSV( HUE_GREEN, 255, 255);
-
     for ( int i = 0; i < NUM_LEDS; i++) {
       leds[i] = ColorFromPalette( currentPalette, (int)colorIndex, brightness, currentBlending);
-      //leds[i] = green;
     }
   } else
 
@@ -382,24 +399,22 @@ void ShowCurrentEffect() {
     type = "luxi";
     uint8_t brightness = 100;
     val = lightMeter.readLightLevel();
-    Serial.print(val);
     type2 = "_";
     val2 = 0;
     type3 = "_";
     val3 = 0;
-
-    if (val > 500) {
-      val = 500;
+    uint32_t _val = val;
+    if (_val <= 0) {
+      _val = 1;
     }
-    float colorIndex = map(val, 0, 500, 0, 255);
-    //    Serial.println(val);
+    _val = log(_val) * 20;  // log(65000) < 12, so 12*20 = max 240
+    // float colorIndex = map(_val, 0, 12, 0, 255);
+    float colorIndex = _val;
+    Serial.print(val);
     Serial.print(" lx, lux map ");
     Serial.println(colorIndex);
-    CRGB green  = CHSV( HUE_GREEN, 255, 255);
-
     for ( int i = 0; i < NUM_LEDS; i++) {
       leds[i] = ColorFromPalette( currentPalette, (int)colorIndex, brightness, currentBlending);
-      //leds[i] = green;
     }
   } else
 
@@ -439,9 +454,31 @@ void ShowCurrentEffect() {
       Serial.println(_g);
       Serial.println(_r);
       */
+      if ((blue_light > red_light) && (blue_light > green_light)) {
+        green_light = green_light / 2;
+        red_light = red_light / 2;
+      }
+      else
+      if ((green_light > red_light) && (green_light > blue_light)) {
+        blue_light = blue_light / 2;
+        red_light = red_light / 2;
+      }
+      else   
+      if ((red_light > blue_light) && (red_light > green_light)) {
+        green_light = green_light / 2;
+        blue_light = blue_light / 2;
+      }
       if (red_light > 255) {red_light = 255;}
       if (green_light > 255) {green_light = 255;}
       if (blue_light > 255) {blue_light = 255;}
+      Serial.print("Ambient: ");
+      Serial.print(ambient_light);
+      Serial.print(" Red: ");
+      Serial.print(red_light);
+      Serial.print(" Green: ");
+      Serial.print(green_light);
+      Serial.print(" Blue: ");
+      Serial.println(blue_light);
       FillLEDsFromStaticColor(red_light, green_light, blue_light); 
     }
     
