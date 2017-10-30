@@ -197,14 +197,6 @@ void MqttSetup() {
 void setup() {
   Wire.begin(SDA, SCL);
   Serial.begin(115200);
-  //pinMode(interruptPin, INPUT_PULLUP);
-  //pinMode(interruptPin2, INPUT_PULLUP);
-  //attachInterrupt(digitalPinToInterrupt(interruptPin), handleInterrupt, FALLING);
-  //attachInterrupt(digitalPinToInterrupt(interruptPin2), handleInterrupt2, RISING);
-  // Initialize interrupt service routine, RGB APDS-9960 gesture function
-  pinMode(APDS9960_INT, INPUT_PULLUP);
-  attachInterrupt(APDS9960_INT, interruptRoutine, FALLING);
-
   Serial.println();
   Serial.println();
   Serial.println("Waiting 1 sec...");
@@ -286,113 +278,12 @@ void loop()
 {
   if (!client.loop()) {
     Serial.print("Client disconnected...");
+    // TODO: increase reconnect from every loop() to every 60 sec or so
     MqttSetup();
   }
-  if (cnt % 10 == 0) {
-    /*
-      Serial.print("looping ");
-      Serial.println(cnt);
-      Serial.print("Ambient = "); Serial.print(readAmbientTempC(0x5A));
-      Serial.print("*C\tObject = "); Serial.print(readObjectTempC(0x5A)); Serial.println("*C");
-      Serial.println();
-    */
-    //Serial.println(readObjectTempC(0x5A));
-
-  }
-  cnt++;
-
-  if (interruptCounter > 0) {
-    interruptCounter--;
-    numberOfInterrupts++;
-    Serial.print("An interrupt has occurred. Total: ");
-    Serial.println(numberOfInterrupts);
-  }
-
-  if (interruptCounter2 > 0) {
-    interruptCounter2--;
-    numberOfInterrupts2++;
-    //Serial.print("A PIR interrupt has occurred. Total: ");
-    //Serial.println(numberOfInterrupts2);
-  }
-
-  // 
-  /*
-  if( isr_flag == 1 ) {
-    detachInterrupt(APDS9960_INT);
-    handleGesture();
-    isr_flag = 0;
-    attachInterrupt(APDS9960_INT, interruptRoutine, FALLING);
-  }
-  */
-  // ChangePalettePeriodically();
-
-  // static uint8_t startIndex = 0;
-  // startIndex = startIndex + 1; /* motion speed */
-
-  // FillLEDsFromPaletteColors(startIndex);
-  // FillLEDsFromPaletteStaticColor
   ShowCurrentEffect();
-
   FastLED.show();
   FastLED.delay(1000 / UPDATES_PER_SECOND);
-}
-
-
-void debug(const String& msg) {
-#ifdef DEBUG
-  Serial.println(msg);
-#endif
-}
-
-
-void handleInterrupt() {
-  // Serial.println((millis() - lastInterruptTime));
-  if ((millis() - lastInterruptTime) < 1000) {
-    return;
-  }
-  lastInterruptTime = millis();
-  interruptCounter++;
-}
-
-
-void handleInterrupt2() {
-  // Serial.println((millis() - lastInterruptTime));
-  if ((millis() - lastInterruptTime2) < 1000) {
-    return;
-  }
-  lastInterruptTime2 = millis();
-  interruptCounter2++;
-}
-
-void interruptRoutine() {
-  isr_flag = 1;
-}
-
-void handleGesture() {
-    if ( apds.isGestureAvailable() ) {
-    switch ( apds.readGesture() ) {
-      case DIR_UP:
-        Serial.println("UP");
-        break;
-      case DIR_DOWN:
-        Serial.println("DOWN");
-        break;
-      case DIR_LEFT:
-        Serial.println("LEFT");
-        break;
-      case DIR_RIGHT:
-        Serial.println("RIGHT");
-        break;
-      case DIR_NEAR:
-        Serial.println("NEAR");
-        break;
-      case DIR_FAR:
-        Serial.println("FAR");
-        break;
-      default:
-        Serial.println("NONE");
-    }
-  }
 }
 
 
@@ -414,19 +305,6 @@ void FillLEDsFromStaticColor( uint8_t r, uint8_t g, uint8_t b)
   FastLED.show();
 }
 
-
-void FillLEDsFromPaletteColors( uint8_t colorIndex)
-{
-  uint8_t brightness = 255;
-
-  for ( int i = 0; i < NUM_LEDS; i++) {
-    leds[i] = ColorFromPalette( currentPalette, colorIndex, brightness, currentBlending);
-    colorIndex += 3;
-  }
-}
-
-
-//void SendDataToMQTT(char sensor[], float val) {
 void SendDataToMQTT(char sensor[], char type1[], float val, char type2[], float val2, char type3[], float val3) {
   StaticJsonBuffer<200> jsonBuffer;
   char jsonChar[200];
@@ -472,10 +350,8 @@ void ShowCurrentEffect() {
     Serial.print("\t");
     Serial.println(colorIndex);
     uint8_t brightness = 255;
-    CRGB green  = CHSV( HUE_GREEN, 255, 255);
     for ( int i = 0; i < NUM_LEDS; i++) {
       leds[i] = ColorFromPalette( currentPalette, colorIndex, brightness, currentBlending);
-      //leds[i] = green;
     }
   } else
 
@@ -579,188 +455,3 @@ void ShowCurrentEffect() {
 
 }
 
-// There are several different palettes of colors demonstrated here.
-//
-// FastLED provides several 'preset' palettes: RainbowColors_p, RainbowStripeColors_p,
-// OceanColors_p, CloudColors_p, LavaColors_p, ForestColors_p, and PartyColors_p.
-//
-// Additionally, you can manually define your own color palettes, or you can write
-// code that creates color palettes on the fly.  All are shown here.
-
-void ChangePalettePeriodically()
-{
-  // uint8_t currentMode = (millis() / 1000) % 60;
-  // uint8_t currentMode = numberOfInterrupts % 8;
-  static uint8_t lastMode = 99;
-  if (currentMode != lastMode) {
-    lastMode = currentMode;
-
-    if ( currentMode ==  0)  {
-      debug("Rainbow");
-      //SetupRobotEyePalette();
-      currentPalette = RainbowColors_p;
-      currentBlending = LINEARBLEND;
-    }
-
-    //if( currentMode == 10)  { currentPalette = RainbowStripeColors_p;   currentBlending = NOBLEND;  }
-    if ( currentMode == 1)  {
-      float temp = readObjectTempC(0x5A);
-      debug("Rainbow stripe");
-      currentPalette = RainbowStripeColors_p;
-      currentBlending = LINEARBLEND;
-    }
-
-    if ( currentMode == 2)  {
-      debug("purple green");
-      SetupPurpleAndGreenPalette();
-      currentBlending = LINEARBLEND;
-    }
-
-    if ( currentMode == 3)  {
-      debug("random");
-      SetupTotallyRandomPalette();
-      currentBlending = LINEARBLEND;
-    }
-    //if( currentMode == 30)  { SetupBlackAndWhiteStripedPalette();       currentBlending = NOBLEND; }
-
-    if ( currentMode == 4)  {
-      debug("B & W");
-      SetupBlackAndWhiteStripedPalette();
-      currentBlending = LINEARBLEND;
-    }
-
-    if ( currentMode == 5)  {
-      debug("cloud");
-      currentPalette = CloudColors_p;
-      currentBlending = LINEARBLEND;
-    }
-
-    if ( currentMode == 6)  {
-      debug("party");
-      currentPalette = PartyColors_p;
-      currentBlending = LINEARBLEND;
-    }
-
-    //if( currentMode == 50)  { currentPalette = myRedWhiteBluePalette_p; currentBlending = NOBLEND;  }
-    if ( currentMode == 7)  {
-      debug("red white blue");
-      currentPalette = myRedWhiteBluePalette_p;
-      currentBlending = LINEARBLEND;
-    }
-  }
-}
-
-
-
-
-// This function fills the palette with totally random colors.
-void SetupTotallyRandomPalette()
-{
-  for ( int i = 0; i < 16; i++) {
-    currentPalette[i] = CHSV( random8(), 255, random8());
-  }
-}
-
-// This function sets up a palette of black and white stripes,
-// using code.  Since the palette is effectively an array of
-// sixteen CRGB colors, the various fill_* functions can be used
-// to set them up.
-void SetupBlackAndWhiteStripedPalette()
-{
-  // 'black out' all 16 palette entries...
-  fill_solid( currentPalette, 16, CRGB::Black);
-  // and set every fourth one to white.
-  currentPalette[0] = CRGB::White;
-  currentPalette[4] = CRGB::White;
-  currentPalette[8] = CRGB::White;
-  currentPalette[12] = CRGB::White;
-
-}
-
-// This function sets up a palette of purple and green stripes.
-void SetupPurpleAndGreenPalette()
-{
-  CRGB purple = CHSV( HUE_PURPLE, 255, 255);
-  CRGB green  = CHSV( HUE_GREEN, 255, 255);
-  CRGB black  = CRGB::Black;
-
-  currentPalette = CRGBPalette16(
-                     green,  green,  black,  black,
-                     purple, purple, black,  black,
-                     green,  green,  black,  black,
-                     purple, purple, black,  black );
-}
-
-// This function sets up a palette of purple and green stripes.
-void SetupRobotEyePalette()
-{
-  CRGB red = CRGB::Red;
-  CRGB black  = CRGB::Black;
-
-  currentPalette = CRGBPalette16(
-                     red, red, black,  black,
-                     red, red, black,  black,
-                     red, red, black,  black,
-                     red, red, black,  black
-                     /*
-                                                        red, red, black,  black,
-                                                        red, red, red, red,
-                                                        red, red, red, red,
-                                                        black,  black, black,  black,
-                                                        black,  black, black,  black
-                     */
-                   );
-}
-
-
-
-
-// This example shows how to set up a static color palette
-// which is stored in PROGMEM (flash), which is almost always more
-// plentiful than RAM.  A static PROGMEM palette like this
-// takes up 64 bytes of flash.
-const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM =
-{
-  CRGB::Red,
-  CRGB::Gray, // 'white' is too bright compared to red and blue
-  CRGB::Blue,
-  CRGB::Black,
-
-  CRGB::Red,
-  CRGB::Gray,
-  CRGB::Blue,
-  CRGB::Black,
-
-  CRGB::Red,
-  CRGB::Red,
-  CRGB::Gray,
-  CRGB::Gray,
-  CRGB::Blue,
-  CRGB::Blue,
-  CRGB::Black,
-  CRGB::Black
-};
-
-
-
-// Additionl notes on FastLED compact palettes:
-//
-// Normally, in computer graphics, the palette (or "color lookup table")
-// has 256 entries, each containing a specific 24-bit RGB color.  You can then
-// index into the color palette using a simple 8-bit (one byte) value.
-// A 256-entry color palette takes up 768 bytes of RAM, which on Arduino
-// is quite possibly "too many" bytes.
-//
-// FastLED does offer traditional 256-element palettes, for setups that
-// can afford the 768-byte cost in RAM.
-//
-// However, FastLED also offers a compact alternative.  FastLED offers
-// palettes that store 16 distinct entries, but can be accessed AS IF
-// they actually have 256 entries; this is accomplished by interpolating
-// between the 16 explicit entries to create fifteen intermediate palette
-// entries between each pair.
-//
-// So for example, if you set the first two explicit entries of a compact
-// palette to Green (0,255,0) and Blue (0,0,255), and then retrieved
-// the first sixteen entries from the virtual palette (of 256), you'd get
-// Green, followed by a smooth gradient from green-to-blue, and then Blue.
