@@ -13,6 +13,8 @@
 
 #include "settings.h"
 #include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include "Adafruit_BME680.h"
 #include <BH1750.h>       // https://github.com/claws/BH1750
 #include "SparkFun_Si7021_Breakout_Library.h"  // https://github.com/sparkfun/Si7021_Breakout
 #include <SparkFun_APDS9960.h>
@@ -39,7 +41,7 @@ uint32_t lastMsgTime = 0;
 // FastLED settings
 #define LED_PIN     D7  // 13    // D7
 #define CLK_PIN     D5  // 14    // D5
-#define NUM_LEDS    60
+#define NUM_LEDS    168
 #define BRIGHTNESS  255
 //#define LED_TYPE    WS2811
 #define LED_TYPE    LPD8806
@@ -53,6 +55,8 @@ CRGB leds[NUM_LEDS];
 #define S_TEMP_HUMIDITY 2
 #define S_LUX_METER 3
 #define S_GESTURE_RGB 4
+#define S_BME680 5
+
 uint8_t currentMode = S_BUTTON;
 
 // Button settings
@@ -81,6 +85,9 @@ float ir_object_temp = -273.15;
 // LUX meter
 BH1750 lightMeter(0x23);
 uint16_t lux = -1;
+
+// BME280
+Adafruit_BME680 bme; // I2C
 
 // RGB meter, Global Variables
 #define APDS9960_INT D5 // Needs to be an interrupt pin
@@ -147,7 +154,7 @@ void WifiSetup() {
     Serial.print ( "." );
     delay ( 250 );
     FillLEDsFromStaticColor(0,0,0); 
-    if ((millis() - wifi_start) > 20*1000) {
+    if ((millis() - wifi_start) > WIFI_WAIT) {
       Serial.println("");
       Serial.println("WiFi connect failed");
       // TODO: show error message in leds
@@ -288,6 +295,21 @@ void setup() {
   } else {
     Serial.println(F("Something went wrong during APDS-9960 init!"));
   }
+
+
+  if (bme.begin()) {
+    Serial.println(F("BME680 sensor is now running"));
+    currentMode = S_BME680;
+    // Set up oversampling and filter initialization
+    bme.setTemperatureOversampling(BME680_OS_8X);
+    bme.setHumidityOversampling(BME680_OS_2X);
+    bme.setPressureOversampling(BME680_OS_4X);
+    bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
+    bme.setGasHeater(320, 150); // 320*C for 150 ms
+  } else {
+    Serial.println("Could not find a valid BME680 sensor, check wiring!");
+  }
+
   Serial.print("Current mode: ");
   Serial.println(currentMode);
   
@@ -326,6 +348,7 @@ void FillLEDsFromStaticColor( uint8_t r, uint8_t g, uint8_t b)
 }
 
 void SendDataToMQTT(char sensor[], char type1[], float val, char type2[], float val2, char type3[], float val3) {
+  // Serial.println("SendDataToMQTT start");
   StaticJsonBuffer<200> jsonBuffer;
   char jsonChar[200];
   JsonObject& root = jsonBuffer.createObject();
@@ -340,11 +363,12 @@ void SendDataToMQTT(char sensor[], char type1[], float val, char type2[], float 
   data.add(type3);
   data.add(val3);
   root.printTo(jsonChar);
-  client.publish(MQTT_TOPIC, jsonChar);
   Serial.println(jsonChar);
+  client.publish(MQTT_TOPIC, jsonChar);
 }
 
 void ShowCurrentEffect() {
+  // Serial.println("ShowCurrentEffect()");
   char* sensor;
   char* type;
   float val;
@@ -482,12 +506,51 @@ void ShowCurrentEffect() {
       FillLEDsFromStaticColor(red_light, green_light, blue_light); 
     }
     
-  }
+  }  else
 
-  if (millis() > (lastMsgTime + 1000)) {
+  if (currentMode == S_BME680)  {
+    if (! bme.performReading()) {
+      Serial.println("Failed to perform reading :(");
+      return;
+    } else {
+      //create some variables to store the color data in
+      float temp, humi, gas, c;
+      sensor = "bme680";
+      type = "temp";
+      type2 = "humi";
+      type3 = "gas";
+      val = bme.temperature;
+      val2 = bme.humidity;
+      val3 = bme.gas_resistance / 1000.0;
+      /*
+      Serial.print("Temp: ");
+      Serial.print(val);
+      Serial.print(" Humi: ");
+      Serial.print(val2);
+      Serial.print(" Gas: ");
+      Serial.print(val3);
+      Serial.print(" Pressure: ");
+      Serial.println(bme.pressure / 100.0);
+      */
+    }
+  } else {
+    sensor = "test";
+    type = "x";
+    type2 = "y";
+    type3 = "z";
+    val = 1;
+    val2 = 2;
+    val3 = 3;
+
+  }
+  // Serial.println("ShowCurrentEffect()");
+
+  if (millis() > (lastMsgTime + SEND_DELAY)) {
+    // Serial.println("SendDataToMQTT");
     SendDataToMQTT(sensor, type, val, type2, val2, type3, val3);
     lastMsgTime = millis();
   }
+  // Serial.println("ShowCurrentEffect() end");
 
 
 }

@@ -9,3 +9,7 @@
 #define MQTT_USER "mqtt_user_with_read-write_permission_to_topic"
 #define MQTT_PASSWORD "mqtt_password"
 
+// Other settings
+#define SEND_DELAY 5000 # milliseconds
+#define WIFI_WAIT 30 # seconds
+
