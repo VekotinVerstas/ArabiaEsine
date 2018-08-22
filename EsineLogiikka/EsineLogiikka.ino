@@ -391,7 +391,7 @@ void ShowCurrentEffect() {
   uint8_t brightness = 255;
 
   if (currentMode == S_IR_TEMP)  {
-    sensor = "irtemp";
+    sensor = "mlx90614";
     type = "temp";
     val = readObjectTempC(0x5A);
     type2 = "_";
@@ -430,7 +430,7 @@ void ShowCurrentEffect() {
   } else
 
   if (currentMode == S_LUX_METER)  {
-    sensor = "lux";
+    sensor = "bh1750";
     type = "luxi";
     uint8_t brightness = 100;
     val = lightMeter.readLightLevel();
@@ -456,7 +456,7 @@ void ShowCurrentEffect() {
   if (currentMode == S_GESTURE_RGB)  {
     //create some variables to store the color data in
     uint16_t r, g, b, c;
-    sensor = "rgbgest";
+    sensor = "apds9960";
     type = "r";
     type2 = "g";
     type3 = "b";
