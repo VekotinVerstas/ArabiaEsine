@@ -12,4 +12,6 @@
 // Other settings
 #define SEND_DELAY 5000 # milliseconds
 #define WIFI_WAIT 30 # seconds
+// Sensors
+#define BME680_HEATING_TIME 500 // milliseconds
 

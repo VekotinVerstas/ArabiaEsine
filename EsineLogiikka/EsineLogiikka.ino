@@ -34,6 +34,8 @@ bool wifiReconnect = false;
 
 uint32_t lastMsgTime = 0;
 
+String mac_str;
+
 // I2C settings
 #define SDA     D2
 #define SCL     D1
@@ -219,6 +221,7 @@ void MqttSetup() {
 }
 
 void setup() {
+  mac_str = WiFi.macAddress();
   Wire.begin(SDA, SCL);
   Serial.begin(115200);
   Serial.println();
@@ -305,7 +308,7 @@ void setup() {
     bme.setHumidityOversampling(BME680_OS_2X);
     bme.setPressureOversampling(BME680_OS_4X);
     bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
-    bme.setGasHeater(320, 150); // 320*C for 150 ms
+    bme.setGasHeater(320, BME680_HEATING_TIME); // 320*C for 150 ms
   } else {
     Serial.println("Could not find a valid BME680 sensor, check wiring!");
   }
@@ -349,12 +352,20 @@ void FillLEDsFromStaticColor( uint8_t r, uint8_t g, uint8_t b)
 
 void SendDataToMQTT(char sensor[], char type1[], float val, char type2[], float val2, char type3[], float val3) {
   // Serial.println("SendDataToMQTT start");
-  StaticJsonBuffer<200> jsonBuffer;
-  char jsonChar[200];
+  // StaticJsonBuffer<512> jsonBuffer;
+  /* 
+   *  NOTE!!!!!!!!!!
+   *  For some weird reason / bug json message to be send can't exceed 106 bytes.
+   *  Check that message size is at most 106 B.
+   */
+  DynamicJsonBuffer jsonBuffer(512);
+  char jsonChar[256];
   JsonObject& root = jsonBuffer.createObject();
-  root["chipid"] = ESP.getChipId();
   root["sensor"] = sensor;
-  root["millis"] = millis();
+  root["mac"] = mac_str;
+  // root["chipid"] = ESP.getChipId();
+  // root["millis"] = millis();
+  // root["mac"] = "B4E62D17F339";  
   JsonArray& data = root.createNestedArray("data");
   data.add(type1);
   data.add(val);
