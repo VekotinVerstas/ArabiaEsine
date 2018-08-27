@@ -10,8 +10,8 @@
 #define MQTT_PASSWORD "mqtt_password"
 
 // Other settings
-#define SEND_DELAY 5000 # milliseconds
+#define SEND_DELAY 10000 # milliseconds
 #define WIFI_WAIT 30 # seconds
 // Sensors
-#define BME680_HEATING_TIME 500 // milliseconds
+#define BME680_HEATING_TIME 150 // milliseconds, 150 is now recommended
 

@@ -412,7 +412,7 @@ void ShowCurrentEffect() {
 
   if (currentMode == S_TEMP_HUMIDITY)  {
     uint8_t brightness = 100;
-    sensor = "humitemp";
+    sensor = "si7021";
     type = "humi";
     type2 = "temp";
     val = ht_sensor.getRH();
@@ -520,29 +520,32 @@ void ShowCurrentEffect() {
   }  else
 
   if (currentMode == S_BME680)  {
-    if (! bme.performReading()) {
-      Serial.println("Failed to perform reading :(");
-      return;
-    } else {
-      //create some variables to store the color data in
-      float temp, humi, gas, c;
-      sensor = "bme680";
-      type = "temp";
-      type2 = "humi";
-      type3 = "gas";
-      val = bme.temperature;
-      val2 = bme.humidity;
-      val3 = bme.gas_resistance / 1000.0;
-      /*
-      Serial.print("Temp: ");
-      Serial.print(val);
-      Serial.print(" Humi: ");
-      Serial.print(val2);
-      Serial.print(" Gas: ");
-      Serial.print(val3);
-      Serial.print(" Pressure: ");
-      Serial.println(bme.pressure / 100.0);
-      */
+    // Read BME680 rarely, only when there is time to send data
+    if (millis() > (lastMsgTime + SEND_DELAY)) {
+      if (! bme.performReading()) {
+        Serial.println("Failed to perform reading :(");
+        return;
+      } else {
+        //create some variables to store the color data in
+        float temp, humi, gas, c;
+        sensor = "bme680";
+        type = "temp";
+        type2 = "humi";
+        type3 = "gas";
+        val = bme.temperature;
+        val2 = bme.humidity;
+        val3 = bme.gas_resistance / 1000.0;
+        /*
+        Serial.print("Temp: ");
+        Serial.print(val);
+        Serial.print(" Humi: ");
+        Serial.print(val2);
+        Serial.print(" Gas: ");
+        Serial.print(val3);
+        Serial.print(" Pressure: ");
+        Serial.println(bme.pressure / 100.0);
+        */
+      }
     }
   } else {
     sensor = "test";
