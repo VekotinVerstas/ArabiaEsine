@@ -37,7 +37,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
 WiFiClient wifiClient;
 PubSubClient client(MQTT_SERVER, 1883, callback, wifiClient);
 bool wifiReconnect = false;
-SoftwareSerial sensor(PIN_RX, PIN_TX);
+SoftwareSerial co2_sensor(PIN_RX, PIN_TX);
 
 uint32_t lastMsgTime = 0;
 
@@ -224,6 +224,7 @@ void setup() {
   mac_str = WiFi.macAddress();
   Wire.begin(SDA, SCL);
   Serial.begin(115200);
+  co2_sensor.begin(9600);
   Serial.println();
   Serial.println();
   Serial.println("Waiting 1 sec...");
@@ -298,8 +299,8 @@ void setup() {
     Serial.println(F("Something went wrong during APDS-9960 init!"));
   }
 
-  Serial.println("Setup: Polling MHZ-19");
   int co2, temp;
+  Serial.println("Setup: Polling MHZ-19");
   if (read_temp_co2(&co2, &temp)) {
     currentMode = S_CO2_TEMP;
     currentPalette = humi_gp;
@@ -345,12 +346,12 @@ static bool exchange_command(uint8_t cmd, uint8_t data[], int timeout)
   uint8_t buf[9];
   int len = prepare_tx(cmd, data, buf, sizeof(buf));
   // send the command
-  sensor.write(buf, len);
+  co2_sensor.write(buf, len);
   // wait for response
   long start = millis();
   while ((millis() - start) < timeout) {
-    if (sensor.available() > 0) {
-      uint8_t b = sensor.read();
+    if (co2_sensor.available() > 0) {
+      uint8_t b = co2_sensor.read();
       if (process_rx(b, cmd, data)) {
         return true;
       }
@@ -362,15 +363,10 @@ static bool exchange_command(uint8_t cmd, uint8_t data[], int timeout)
 static bool read_temp_co2(int *co2, int *temp)
 {
   uint8_t data[] = {0, 0, 0, 0, 0, 0};
-  bool result = exchange_command(0x86, data, 3000);
+  bool result = exchange_command(0x86, data, 1000);
   if (result) {
     *co2 = (data[0] << 8) + data[1];
     *temp = data[2] - 40;
-#if 1
-    char raw[32];
-    sprintf(raw, "RAW: %02X %02X %02X %02X %02X %02X", data[0], data[1], data[2], data[3], data[4], data[5]);
-    Serial.println(raw);
-#endif
   }
   return result;
 }
