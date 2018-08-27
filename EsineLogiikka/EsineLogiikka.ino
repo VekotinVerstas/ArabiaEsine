@@ -9,17 +9,23 @@
    - LUX meter (BH1750)
    - temperature / humidity sensor
    - a button
+   - mhz19 co2 sensor
  **************************************************************************************/
 
 #include "settings.h"
 #include <Wire.h>
 #include <BH1750.h>       // https://github.com/claws/BH1750
-#include "SparkFun_Si7021_Breakout_Library.h"  // https://github.com/sparkfun/Si7021_Breakout
+#include <SparkFun_Si7021_Breakout_Library.h>  // https://github.com/sparkfun/Si7021_Breakout
 #include <SparkFun_APDS9960.h>
 #include <FastLED.h>
 #include <PubSubClient.h>
 #include <ESP8266WiFi.h>
 #include <ArduinoJson.h>
+#include <SoftwareSerial.h>
+#include "mhz19.h"
+
+#define PIN_RX  D1
+#define PIN_TX  D2
 
 void callback(char* topic, byte* payload, unsigned int length) {
   // handle message arrived
@@ -29,6 +35,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
 WiFiClient wifiClient;
 PubSubClient client(MQTT_SERVER, 1883, callback, wifiClient);
 bool wifiReconnect = false;
+SoftwareSerial sensor(PIN_RX, PIN_TX);
 
 uint32_t lastMsgTime = 0;
 
@@ -48,12 +55,16 @@ uint32_t lastMsgTime = 0;
 CRGB leds[NUM_LEDS];
 
 // Modes
-#define S_BUTTON 0
-#define S_IR_TEMP 1
-#define S_TEMP_HUMIDITY 2
-#define S_LUX_METER 3
-#define S_GESTURE_RGB 4
-uint8_t currentMode = S_BUTTON;
+enum {
+  S_BUTTON,
+  S_IR_TEMP,
+  S_TEMP_HUMIDITY,
+  S_LUX_METER,
+  S_GESTURE_RGB,
+  S_CO2_TEMP
+} currentMode = S_BUTTON;
+
+//uint8_t
 
 // Button settings
 const byte interruptPin = D4; // 2; // D4
@@ -65,7 +76,6 @@ const byte interruptPin2 = D2;
 volatile byte interruptCounter2 = 0;
 int numberOfInterrupts2 = 0;
 long lastInterruptTime2 = 0;
-
 
 CRGBPalette16 currentPalette;
 TBlendType    currentBlending;
@@ -103,25 +113,23 @@ DEFINE_GRADIENT_PALETTE( infrared_gp ) {
   112, 255,   0,   0,  //  37 red
   156,   0, 255, 255,  //  50 cyan
   255, 255, 255, 255   //full white
-}; 
+};
 
 DEFINE_GRADIENT_PALETTE( lux_gp ) {
-    0,   0,  0,  255,  //   0 blue
+  0,   0,  0,  255,  //   0 blue
   100,   0, 255,   0,  //  22 green
   120, 255, 128,   0,  //  30 yellow
   140, 255,   0,   0,  //  37 red
   255, 255, 255, 255   //  full white
-}; 
+};
 
 DEFINE_GRADIENT_PALETTE( humi_gp ) {
-    0,    0,  0,  255, //   0 blue
-   20, 255, 255,   0,  //  20 yellow
-   89,   0, 255,   0,  //  30 green
+  0,    0,  0,  255, //   0 blue
+  20, 255, 255,   0,  //  20 yellow
+  89,   0, 255,   0,  //  30 green
   127,   0, 255,   0,  //  30 green
   255, 255,   0,   0   // 100 red
-}; 
-
-
+};
 
 String macToStr(const uint8_t* mac)
 {
@@ -136,27 +144,32 @@ String macToStr(const uint8_t* mac)
 
 void WifiSetup() {
   uint32_t wifi_start = millis();
-  FillLEDsFromStaticColor(0,0,250);   
+  FillLEDsFromStaticColor(0, 0, 250);
+  Serial.print("Connecting to ");
+  Serial.print(WIFI_SSID);
+  Serial.print(" with pw ");
+  Serial.println(WIFI_PASSWORD);
+
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   // TODO: quit connecting after e.g. 20 seconds
   delay ( 500 );
   while (WiFi.status() != WL_CONNECTED) {
     // TODO: blink leds here
     delay ( 250 );
-    FillLEDsFromStaticColor(100,100,0); 
+    FillLEDsFromStaticColor(100, 100, 0);
     Serial.print ( "." );
     delay ( 250 );
-    FillLEDsFromStaticColor(0,0,0); 
-    if ((millis() - wifi_start) > 20*1000) {
+    FillLEDsFromStaticColor(0, 0, 0);
+    if ((millis() - wifi_start) > 20 * 1000) {
       Serial.println("");
       Serial.println("WiFi connect failed");
       // TODO: show error message in leds
       for (int i = 0; i < 10; i++) {
         delay ( 250 );
-        FillLEDsFromStaticColor(200,0,0); 
+        FillLEDsFromStaticColor(200, 0, 0);
         Serial.print ( "." );
         delay ( 250 );
-        FillLEDsFromStaticColor(200,200,0); 
+        FillLEDsFromStaticColor(200, 200, 0);
       }
       return;
     }
@@ -187,21 +200,11 @@ void MqttSetup() {
   Serial.print(" as ");
   Serial.println(clientName);
 
-//  if (client.connect((char*) clientName.c_str())) {
+  //  if (client.connect((char*) clientName.c_str())) {
   if (client.connect((char*) clientName.c_str(), MQTT_USER, MQTT_PASSWORD)) {
-    
     Serial.println("Connected to MQTT broker");
     Serial.print("Topic is: ");
     Serial.println(MQTT_TOPIC);
-
-    /*
-        if (client.publish(MQTT_TOPIC, "hello from ESP8266")) {
-          Serial.println("Publish ok");
-        }
-        else {
-          Serial.println("Publish failed");
-        }
-    */
   }
   else {
     Serial.println("MQTT connect failed");
@@ -221,7 +224,6 @@ void setup() {
   Serial.println("Init FastLED");
   //FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
   FastLED.addLeds<LED_TYPE, LED_PIN, CLK_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
-
   FastLED.setBrightness( BRIGHTNESS );
 
   WifiSetup();
@@ -274,13 +276,13 @@ void setup() {
       // Wait for initialization and calibration to finish
       delay(500);
       /*
-      // Start running the APDS-9960 gesture sensor engine
-      if ( apds.enableGestureSensor(true) ) {
+        // Start running the APDS-9960 gesture sensor engine
+        if ( apds.enableGestureSensor(true) ) {
         Serial.println(F("Gesture sensor is now running"));
-      } else {
+        } else {
         Serial.println(F("Something went wrong during gesture sensor init!"));
-      } 
-      */ 
+        }
+      */
     } else {
       Serial.println(F("Something went wrong during light sensor init!"));
     }
@@ -288,11 +290,21 @@ void setup() {
   } else {
     Serial.println(F("Something went wrong during APDS-9960 init!"));
   }
+
+  Serial.println("Setup: Polling MHZ-19");
+  int co2, temp;
+  if (read_temp_co2(&co2, &temp)) {
+    currentMode = S_CO2_TEMP;
+    currentPalette = humi_gp;
+    Serial.print("Setup: Found CO2 meter: ");
+    Serial.print("CO2:");
+    Serial.println(co2, DEC);
+    Serial.print("TEMP:");
+    Serial.println(temp, DEC);
+  }
   Serial.print("Current mode: ");
   Serial.println(currentMode);
-  
 }
-
 
 void loop()
 {
@@ -306,6 +318,41 @@ void loop()
   FastLED.delay(1000 / UPDATES_PER_SECOND);
 }
 
+static bool exchange_command(uint8_t cmd, uint8_t data[], int timeout)
+{
+  // create command buffer
+  uint8_t buf[9];
+  int len = prepare_tx(cmd, data, buf, sizeof(buf));
+  // send the command
+  sensor.write(buf, len);
+  // wait for response
+  long start = millis();
+  while ((millis() - start) < timeout) {
+    if (sensor.available() > 0) {
+      uint8_t b = sensor.read();
+      if (process_rx(b, cmd, data)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+static bool read_temp_co2(int *co2, int *temp)
+{
+  uint8_t data[] = {0, 0, 0, 0, 0, 0};
+  bool result = exchange_command(0x86, data, 3000);
+  if (result) {
+    *co2 = (data[0] << 8) + data[1];
+    *temp = data[2] - 40;
+#if 1
+    char raw[32];
+    sprintf(raw, "RAW: %02X %02X %02X %02X %02X %02X", data[0], data[1], data[2], data[3], data[4], data[5]);
+    Serial.println(raw);
+#endif
+  }
+  return result;
+}
 
 void FillLEDsFromPaletteStaticColor( uint8_t colorIndex)
 {
@@ -355,140 +402,171 @@ void ShowCurrentEffect() {
 
   uint8_t brightness = 255;
 
-  if (currentMode == S_IR_TEMP)  {
-    sensor = "irtemp";
-    type = "temp";
-    val = readObjectTempC(0x5A);
-    type2 = "_";
-    val2 = 0;
-    type3 = "_";
-    val3 = 0;
-    float colorIndex = map(val * 100, -28 * 100, 100 * 100, 0, 255);
-    if (colorIndex < 0) {colorIndex = 0;}
-    if (colorIndex > 255) {colorIndex = 255;}
-    Serial.print(val);
-    Serial.print("\t");
-    Serial.println(colorIndex);
-    uint8_t brightness = 255;
-    for ( int i = 0; i < NUM_LEDS; i++) {
-      leds[i] = ColorFromPalette( currentPalette, colorIndex, brightness, currentBlending);
-    }
-  } else
-
-  if (currentMode == S_TEMP_HUMIDITY)  {
-    uint8_t brightness = 100;
-    sensor = "humitemp";
-    type = "humi";
-    type2 = "temp";
-    val = ht_sensor.getRH();
-    val2 = ht_sensor.getTemp();
-    type3 = "_";
-    val3 = 0;
-
-    float colorIndex = map(val * 100, 0 * 100, 100 * 100, 0, 255);
-    Serial.print(val);
-    Serial.print(" %, Humi map ");
-    Serial.println(colorIndex);
-    for ( int i = 0; i < NUM_LEDS; i++) {
-      leds[i] = ColorFromPalette( currentPalette, (int)colorIndex, brightness, currentBlending);
-    }
-  } else
-
-  if (currentMode == S_LUX_METER)  {
-    sensor = "lux";
-    type = "luxi";
-    uint8_t brightness = 100;
-    val = lightMeter.readLightLevel();
-    type2 = "_";
-    val2 = 0;
-    type3 = "_";
-    val3 = 0;
-    uint32_t _val = val;
-    if (_val <= 0) {
-      _val = 1;
-    }
-    _val = log(_val) * 20;  // log(65000) < 12, so 12*20 = max 240
-    // float colorIndex = map(_val, 0, 12, 0, 255);
-    float colorIndex = _val;
-    Serial.print(val);
-    Serial.print(" lx, lux map ");
-    Serial.println(colorIndex);
-    for ( int i = 0; i < NUM_LEDS; i++) {
-      leds[i] = ColorFromPalette( currentPalette, (int)colorIndex, brightness, currentBlending);
-    }
-  } else
-
-  if (currentMode == S_GESTURE_RGB)  {
-    //create some variables to store the color data in
-    uint16_t r, g, b, c;
-    sensor = "rgbgest";
-    type = "r";
-    type2 = "g";
-    type3 = "b";
-    
-    if (  !apds.readAmbientLight(ambient_light) ||
-          !apds.readRedLight(red_light) ||
-          !apds.readGreenLight(green_light) ||
-          !apds.readBlueLight(blue_light) ) {
-      Serial.println("Error reading light values");
-    } else {
-      Serial.print("Ambient: ");
-      Serial.print(ambient_light);
-      Serial.print(" Red: ");
-      Serial.print(red_light);
-      Serial.print(" Green: ");
-      Serial.print(green_light);
-      Serial.print(" Blue: ");
-      Serial.println(blue_light);
-      val = red_light;
-      val2 = green_light;
-      val3 = blue_light;
-      /*
-      uint16_t maxval = max(val, val2);
-      maxval = max(maxval, val3);
-      float divider = maxval / 255.0;
-      uint8_t _r = r / divider;
-      uint8_t _g = g / divider;
-      uint8_t _b = b / divider;
-      Serial.println(_r);
-      Serial.println(_g);
-      Serial.println(_r);
-      */
-      if ((blue_light > red_light) && (blue_light > green_light)) {
-        green_light = green_light / 2;
-        red_light = red_light / 2;
+  switch (currentMode) {
+    case S_IR_TEMP:
+      {
+        sensor = "irtemp";
+        type = "temp";
+        val = readObjectTempC(0x5A);
+        type2 = "_";
+        val2 = 0;
+        type3 = "_";
+        val3 = 0;
+        float colorIndex = map(val * 100, -28 * 100, 100 * 100, 0, 255);
+        if (colorIndex < 0) {
+          colorIndex = 0;
+        }
+        if (colorIndex > 255) {
+          colorIndex = 255;
+        }
+        Serial.print(val);
+        Serial.print("\t");
+        Serial.println(colorIndex);
+        uint8_t brightness = 255;
+        for ( int i = 0; i < NUM_LEDS; i++) {
+          leds[i] = ColorFromPalette( currentPalette, colorIndex, brightness, currentBlending);
+        }
       }
-      else
-      if ((green_light > red_light) && (green_light > blue_light)) {
-        blue_light = blue_light / 2;
-        red_light = red_light / 2;
+      break;
+
+    case S_TEMP_HUMIDITY:
+      {
+        uint8_t brightness = 100;
+        sensor = "humitemp";
+        type = "humi";
+        type2 = "temp";
+        val = ht_sensor.getRH();
+        val2 = ht_sensor.getTemp();
+        type3 = "_";
+        val3 = 0;
+
+        float colorIndex = map(val * 100, 0 * 100, 100 * 100, 0, 255);
+        Serial.print(val);
+        Serial.print(" %, Humi map ");
+        Serial.println(colorIndex);
+        for ( int i = 0; i < NUM_LEDS; i++) {
+          leds[i] = ColorFromPalette( currentPalette, (int)colorIndex, brightness, currentBlending);
+        }
       }
-      else   
-      if ((red_light > blue_light) && (red_light > green_light)) {
-        green_light = green_light / 2;
-        blue_light = blue_light / 2;
+      break;
+
+    case S_LUX_METER:
+      {
+        sensor = "lux";
+        type = "luxi";
+        uint8_t brightness = 100;
+        val = lightMeter.readLightLevel();
+        type2 = "_";
+        val2 = 0;
+        type3 = "_";
+        val3 = 0;
+        uint32_t _val = val;
+        if (_val <= 0) {
+          _val = 1;
+        }
+        _val = log(_val) * 20;  // log(65000) < 12, so 12*20 = max 240
+        // float colorIndex = map(_val, 0, 12, 0, 255);
+        float  colorIndex = _val;
+        Serial.print(val);
+        Serial.print(" lx, lux map ");
+        Serial.println(colorIndex);
+        for ( int i = 0; i < NUM_LEDS; i++) {
+          leds[i] = ColorFromPalette( currentPalette, (int)colorIndex, brightness, currentBlending);
+        }
       }
-      if (red_light > 255) {red_light = 255;}
-      if (green_light > 255) {green_light = 255;}
-      if (blue_light > 255) {blue_light = 255;}
-      Serial.print("Ambient: ");
-      Serial.print(ambient_light);
-      Serial.print(" Red: ");
-      Serial.print(red_light);
-      Serial.print(" Green: ");
-      Serial.print(green_light);
-      Serial.print(" Blue: ");
-      Serial.println(blue_light);
-      FillLEDsFromStaticColor(red_light, green_light, blue_light); 
-    }
-    
+      break;
+
+    case S_GESTURE_RGB:
+      {
+        //create some variables to store the color data in
+        uint16_t r, g, b, c;
+        sensor = "rgbgest";
+        type = "r";
+        type2 = "g";
+        type3 = "b";
+
+        if (  !apds.readAmbientLight(ambient_light) ||
+              !apds.readRedLight(red_light) ||
+              !apds.readGreenLight(green_light) ||
+              !apds.readBlueLight(blue_light) ) {
+          Serial.println("Error reading light values");
+        }
+        break;
+
+      case S_CO2_TEMP:
+        {
+          sensor = "CO2";
+          type = "co2";
+          type2 = "temp";
+          val = ht_sensor.getRH();
+          val2 = ht_sensor.getTemp();
+          type3 = "_";
+          val3 = 0;
+        }
+        break;
+
+      default :
+        {
+          Serial.print("Ambient: ");
+          Serial.print(ambient_light);
+          Serial.print(" Red: ");
+          Serial.print(red_light);
+          Serial.print(" Green: ");
+          Serial.print(green_light);
+          Serial.print(" Blue: ");
+          Serial.println(blue_light);
+          val = red_light;
+          val2 = green_light;
+          val3 = blue_light;
+          /*
+            uint16_t maxval = max(val, val2);
+            maxval = max(maxval, val3);
+            float divider = maxval / 255.0;
+            uint8_t _r = r / divider;
+            uint8_t _g = g / divider;
+            uint8_t _b = b / divider;
+            Serial.println(_r);
+            Serial.println(_g);
+            Serial.println(_r);
+          */
+          if ((blue_light > red_light) && (blue_light > green_light)) {
+            green_light = green_light / 2;
+            red_light = red_light / 2;
+          }
+          else if ((green_light > red_light) && (green_light > blue_light)) {
+            blue_light = blue_light / 2;
+            red_light = red_light / 2;
+          }
+          else if ((red_light > blue_light) && (red_light > green_light)) {
+            green_light = green_light / 2;
+            blue_light = blue_light / 2;
+          }
+          if (red_light > 255) {
+            red_light = 255;
+          }
+          if (green_light > 255) {
+            green_light = 255;
+          }
+          if (blue_light > 255) {
+            blue_light = 255;
+          }
+          Serial.print("Ambient: ");
+          Serial.print(ambient_light);
+          Serial.print(" Red: ");
+          Serial.print(red_light);
+          Serial.print(" Green: ");
+          Serial.print(green_light);
+          Serial.print(" Blue: ");
+          Serial.println(blue_light);
+          FillLEDsFromStaticColor(red_light, green_light, blue_light);
+        }
+      }
   }
 
   if (millis() > (lastMsgTime + 1000)) {
     SendDataToMQTT(sensor, type, val, type2, val2, type3, val3);
     lastMsgTime = millis();
   }
-
 
 }
 
