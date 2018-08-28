@@ -151,10 +151,6 @@ String macToStr(const uint8_t* mac)
 void WifiSetup() {
   uint32_t wifi_start = millis();
   FillLEDsFromStaticColor(0, 0, 250);
-  Serial.print("Connecting to ");
-  Serial.print(WIFI_SSID);
-  Serial.print(" with pw ");
-  Serial.println(WIFI_PASSWORD);
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   // TODO: quit connecting after e.g. 20 seconds
@@ -166,7 +162,7 @@ void WifiSetup() {
     Serial.print ( "." );
     delay ( 250 );
     FillLEDsFromStaticColor(0, 0, 0);
-    if ((millis() - wifi_start) > 20 * 1000) {
+    if ((millis() - wifi_start) > WIFI_WAIT) {
       Serial.println("");
       Serial.println("WiFi connect failed");
       // TODO: show error message in leds
