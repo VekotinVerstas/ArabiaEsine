@@ -26,8 +26,8 @@
 #include <SoftwareSerial.h>
 #include "mhz19.h"
 
-#define PIN_RX  D1
-#define PIN_TX  D2
+#define PIN_RX  D3
+#define PIN_TX  D4
 
 void callback(char* topic, byte* payload, unsigned int length) {
   // handle message arrived
@@ -68,17 +68,6 @@ enum {
   S_BME680,
   S_CO2_TEMP
 } currentMode = S_BUTTON;
-
-// Button settings
-const byte interruptPin = D4; // 2; // D4
-volatile byte interruptCounter = 0;
-int numberOfInterrupts = 0;
-long lastInterruptTime = 0;
-
-const byte interruptPin2 = D2;
-volatile byte interruptCounter2 = 0;
-int numberOfInterrupts2 = 0;
-long lastInterruptTime2 = 0;
 
 CRGBPalette16 currentPalette;
 TBlendType    currentBlending;
