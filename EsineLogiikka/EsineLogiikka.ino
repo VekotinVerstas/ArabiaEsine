@@ -289,11 +289,7 @@ void setup() {
   if (read_temp_co2(&co2, &temp)) {
     currentMode = S_CO2_TEMP;
     currentPalette = humi_gp;
-    Serial.print("Setup: Found CO2 meter: ");
-    Serial.print("CO2:");
-    Serial.println(co2, DEC);
-    Serial.print("TEMP:");
-    Serial.println(temp, DEC);
+    Serial.println("Setup: Found CO2 meter.");
   }
 
   if (bme.begin()) {
@@ -595,8 +591,10 @@ void ShowCurrentEffect() {
         sensor = "CO2";
         type = "co2";
         type2 = "temp";
-        val = ht_sensor.getRH();
-        val2 = ht_sensor.getTemp();
+        int co2=-100, temp=-100;
+        read_temp_co2(&co2, &temp);
+        val = co2;
+        val2 = temp;
         type3 = "_";
         val3 = 0;
       }
